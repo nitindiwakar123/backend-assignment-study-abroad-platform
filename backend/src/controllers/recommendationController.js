@@ -1,8 +1,11 @@
 ﻿const asyncHandler = require("../utils/asyncHandler");
 const { buildProgramRecommendations } = require("../services/recommendationService");
+const HttpError = require("../utils/httpError");
+const { objectId } = require("../utils/request");
 
 const getRecommendations = asyncHandler(async (req, res) => {
-  const { studentId } = req.params;
+  const studentId = objectId(req.params.studentId, "studentId");
+  if (req.user.role !== "counselor" && req.user.id !== studentId) throw new HttpError(403, "You can only view your own recommendations.");
   const payload = await buildProgramRecommendations(studentId);
 
   res.json({

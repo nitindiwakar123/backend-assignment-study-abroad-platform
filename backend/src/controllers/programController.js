@@ -1,11 +1,6 @@
 ﻿const Program = require("../models/Program");
 const asyncHandler = require("../utils/asyncHandler");
-
-function parseBoolean(value) {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
+const { boolean, enumValue, escapedRegex, page, positiveNumber, string } = require("../utils/request");
 
 const listPrograms = asyncHandler(async (req, res) => {
   const {
@@ -17,47 +12,42 @@ const listPrograms = asyncHandler(async (req, res) => {
     maxTuition,
     scholarshipAvailable,
     sortBy = "relevance",
-    page = 1,
+    page: pageQuery = 1,
     limit = 10,
   } = req.query;
 
   const filters = {};
 
-  if (country) {
-    filters.country = country;
-  }
+  if (country) filters.country = string(country, "country", { max: 80 });
 
   if (degreeLevel) {
-    filters.degreeLevel = degreeLevel;
+    filters.degreeLevel = enumValue(degreeLevel, "degreeLevel", ["bachelor", "master", "diploma", "certificate"]);
   }
 
   if (field) {
-    filters.field = field;
+    filters.field = string(field, "field", { max: 80 });
   }
 
   if (intake) {
-    filters.intakes = intake;
+    filters.intakes = string(intake, "intake", { max: 40 });
   }
 
   if (maxTuition) {
-    filters.tuitionFeeUsd = { $lte: Number(maxTuition) };
+    filters.tuitionFeeUsd = { $lte: positiveNumber(maxTuition, "maxTuition", { min: 0, max: 1000000 }) };
   }
 
-  const scholarshipFlag = parseBoolean(scholarshipAvailable);
+  const scholarshipFlag = boolean(scholarshipAvailable, "scholarshipAvailable");
   if (typeof scholarshipFlag === "boolean") {
     filters.scholarshipAvailable = scholarshipFlag;
   }
 
   if (q) {
     filters.$or = [
-      { title: { $regex: q, $options: "i" } },
-      { universityName: { $regex: q, $options: "i" } },
-      { field: { $regex: q, $options: "i" } },
+      { title: escapedRegex(string(q, "q", { max: 80 })) }, { universityName: escapedRegex(q) }, { field: escapedRegex(q) },
     ];
   }
 
-  const pageNumber = Math.max(Number(page), 1);
-  const pageSize = Math.min(Math.max(Number(limit), 1), 50);
+  const { page: pageNumber, limit: pageSize } = page({ page: pageQuery, limit });
 
   const sortMap = {
     tuitionAsc: { tuitionFeeUsd: 1 },

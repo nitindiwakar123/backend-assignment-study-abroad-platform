@@ -1,12 +1,7 @@
 ﻿const University = require("../models/University");
 const cacheService = require("../services/cacheService");
 const asyncHandler = require("../utils/asyncHandler");
-
-function parseBoolean(value) {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
+const { boolean, enumValue, escapedRegex, page, string } = require("../utils/request");
 
 const listUniversities = asyncHandler(async (req, res) => {
   const {
@@ -15,36 +10,28 @@ const listUniversities = asyncHandler(async (req, res) => {
     q,
     scholarshipAvailable,
     sortBy = "popular",
-    page = 1,
+    page: pageQuery = 1,
     limit = 10,
   } = req.query;
 
   const filters = {};
 
-  if (country) {
-    filters.country = country;
-  }
+  if (country) filters.country = string(country, "country", { max: 80 });
 
-  if (partnerType) {
-    filters.partnerType = partnerType;
-  }
+  if (partnerType) filters.partnerType = enumValue(partnerType, "partnerType", ["direct", "recruitment-partner", "institution-partner"]);
 
-  const scholarshipFlag = parseBoolean(scholarshipAvailable);
+  const scholarshipFlag = boolean(scholarshipAvailable, "scholarshipAvailable");
   if (typeof scholarshipFlag === "boolean") {
     filters.scholarshipAvailable = scholarshipFlag;
   }
 
   if (q) {
     filters.$or = [
-      { name: { $regex: q, $options: "i" } },
-      { country: { $regex: q, $options: "i" } },
-      { city: { $regex: q, $options: "i" } },
-      { tags: { $regex: q, $options: "i" } },
+      { name: escapedRegex(string(q, "q", { max: 80 })) }, { country: escapedRegex(q) }, { city: escapedRegex(q) }, { tags: escapedRegex(q) },
     ];
   }
 
-  const pageNumber = Math.max(Number(page), 1);
-  const pageSize = Math.min(Math.max(Number(limit), 1), 50);
+  const { page: pageNumber, limit: pageSize } = page({ page: pageQuery, limit });
 
   const sortMap = {
     name: { name: 1 },
@@ -75,7 +62,7 @@ const listUniversities = asyncHandler(async (req, res) => {
 
 const listPopularUniversities = asyncHandler(async (req, res) => {
   const cacheKey = "popular-universities";
-  const cachedPayload = cacheService.get(cacheKey);
+  const cachedPayload = await cacheService.get(cacheKey);
 
   if (cachedPayload) {
     return res.json({
@@ -92,7 +79,7 @@ const listPopularUniversities = asyncHandler(async (req, res) => {
     .limit(6)
     .lean();
 
-  cacheService.set(cacheKey, universities);
+  await cacheService.set(cacheKey, universities);
 
   res.json({
     success: true,

@@ -1,88 +1,25 @@
-﻿const Program = require("../models/Program");
+const Program = require("../models/Program");
 const Student = require("../models/Student");
 const HttpError = require("../utils/httpError");
 
-function calculateScore(student, program) {
-  let score = 0;
-  const reasons = [];
-
-  if (student.targetCountries.includes(program.country)) {
-    score += 35;
-    reasons.push(`Preferred country match: ${program.country}`);
-  }
-
-  if (
-    student.interestedFields.some((field) =>
-      program.field.toLowerCase().includes(field.toLowerCase())
-    )
-  ) {
-    score += 30;
-    reasons.push(`Field alignment: ${program.field}`);
-  }
-
-  if (student.maxBudgetUsd >= program.tuitionFeeUsd) {
-    score += 20;
-    reasons.push("Within budget range");
-  }
-
-  if (student.preferredIntake && program.intakes.includes(student.preferredIntake)) {
-    score += 10;
-    reasons.push(`Preferred intake available: ${student.preferredIntake}`);
-  }
-
-  if ((student.englishTest?.score || 0) >= program.minimumIelts) {
-    score += 5;
-    reasons.push("English test score meets requirement");
-  }
-
-  return {
-    score,
-    reasons,
-  };
-}
-
+// The catalogue is scored and limited in MongoDB to avoid loading candidates into Node.
 async function buildProgramRecommendations(studentId) {
   const student = await Student.findById(studentId).lean();
-
-  if (!student) {
-    throw new HttpError(404, "Student not found.");
-  }
-
-  const candidatePrograms = await Program.find({
-    country: { $in: student.targetCountries },
-  })
-    .limit(25)
-    .lean();
-
-  const recommendations = candidatePrograms
-    .map((program) => {
-      const { score, reasons } = calculateScore(student, program);
-      return {
-        ...program,
-        matchScore: score,
-        reasons,
-      };
-    })
-    .sort((left, right) => right.matchScore - left.matchScore)
-    .slice(0, 5);
-
-  return {
-    data: {
-      student: {
-        id: student._id,
-        fullName: student.fullName,
-        targetCountries: student.targetCountries,
-        interestedFields: student.interestedFields,
-      },
-      recommendations,
-    },
-    meta: {
-      implementationStatus:
-        "starter-scoring-in-javascript-replace-with-mongodb-aggregation",
-    },
-  };
+  if (!student) throw new HttpError(404, "Student not found.");
+  const countries = student.targetCountries || [];
+  const fields = (student.interestedFields || []).map((field) => field.toLowerCase());
+  const intake = student.preferredIntake || "";
+  const budget = Number(student.maxBudgetUsd) || 0;
+  const score = Number(student.englishTest?.score) || 0;
+  const recommendations = await Program.aggregate([
+    { $addFields: { fieldLower: { $toLower: "$field" } } },
+    { $addFields: { countryMatch: { $in: ["$country", countries] }, fieldMatch: { $in: ["$fieldLower", fields] }, budgetMatch: { $lte: ["$tuitionFeeUsd", budget] }, intakeMatch: intake ? { $in: [intake, "$intakes"] } : false, ieltsMatch: { $lte: ["$minimumIelts", score] } } },
+    { $addFields: { matchScore: { $add: [{ $cond: ["$countryMatch", 35, 0] }, { $cond: ["$fieldMatch", 30, 0] }, { $cond: ["$budgetMatch", 20, 0] }, { $cond: ["$intakeMatch", 10, 0] }, { $cond: ["$ieltsMatch", 5, 0] }] } } },
+    { $match: { matchScore: { $gt: 0 } } }, { $sort: { matchScore: -1, scholarshipAvailable: -1, tuitionFeeUsd: 1, _id: 1 } }, { $limit: 5 },
+  ]);
+  return { data: { student: { id: student._id, fullName: student.fullName, targetCountries: countries, interestedFields: student.interestedFields }, recommendations: recommendations.map((program) => {
+    const { countryMatch, fieldMatch, budgetMatch, intakeMatch, ieltsMatch, fieldLower, ...data } = program;
+    return { ...data, reasons: [countryMatch && `Preferred country: ${program.country}`, fieldMatch && `Field alignment: ${program.field}`, budgetMatch && "Within budget", intakeMatch && `Preferred intake: ${intake}`, ieltsMatch && "IELTS requirement met"].filter(Boolean) };
+  }) }, meta: { scoring: { country: 35, field: 30, budget: 20, intake: 10, ielts: 5 }, count: recommendations.length } };
 }
-
-module.exports = {
-  buildProgramRecommendations,
-};
+module.exports = { buildProgramRecommendations };
