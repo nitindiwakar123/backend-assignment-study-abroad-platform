@@ -1,4 +1,4 @@
-﻿# Waygood Study Abroad Candidate Evaluation Starter
+# Waygood Study Abroad Candidate Evaluation Starter
 
 This repository is a starter assignment for backend-focused MERN candidates interviewing with Waygood.
 
@@ -137,6 +137,23 @@ npm run dev
 ```
 
 On macOS or Linux, use `cp .env.example .env` instead of `copy`.
+
+### Tests
+
+```bash
+cd backend
+npm test
+```
+
+## API and architecture notes
+
+- **Validation:** Zod runtime schemas strictly validate all public request bodies, route IDs, and query strings before controller logic reads them; errors use one frontend-friendly `{ success: false, message, details }` format.
+- **Authentication:** register only creates `student` accounts to prevent role escalation. JWTs carry an issuer and audience and protected APIs load the current account on every request. Passwords are bcrypt-hashed with 12 rounds; never expose the password field.
+- **Discovery:** `GET /api/universities` supports `country`, `partnerType`, `scholarshipAvailable`, `q`, `sortBy`, `page`, and `limit`. `GET /api/programs` supports `country`, `degreeLevel`, `intake`, `field`, `maxTuition`, `scholarshipAvailable`, `q`, `sortBy`, `page`, and `limit`. Both return `{ success, data, meta }`; Zod schemas validate and coerce all query input before a MongoDB filter is constructed, and limits are capped at 50.
+- **Access control:** students can only list, update, create, and obtain recommendations for themselves. Counselors can access all applications and may create an application for a supplied `studentId`.
+- **Applications:** creation derives university and destination from the program (rather than trusting client input), validates the intake, and has a database unique index on `(student, program, intake)`. Status changes use the transition map and append an immutable-style timeline event.
+- **Caching:** with `REDIS_URL` set, popular universities and dashboard overview use Redis `GET/SET EX`; without Redis the same TTL cache falls back to memory for development. Cache is deliberately not used for authenticated data and is invalidated after application writes. Redis makes cache hits shareable between API instances; the fallback trades that for zero local setup.
+- **Indexes/trade-offs:** catalogue compound indexes prioritize equality filters before tuition range and sorting. The application uniqueness index is both a correctness guarantee under concurrent requests and the principal student-history lookup access pattern. Recommendations score in an aggregation pipeline and limit in MongoDB, avoiding a broad catalogue transfer to Node.
 
 ## Environment Variables
 

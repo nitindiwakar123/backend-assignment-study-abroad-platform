@@ -6,7 +6,7 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const getOverview = asyncHandler(async (req, res) => {
   const cacheKey = "dashboard-overview";
-  const cachedPayload = cacheService.get(cacheKey);
+  const cachedPayload = await cacheService.get(cacheKey);
 
   if (cachedPayload) {
     return res.json({
@@ -40,7 +40,7 @@ const getOverview = asyncHandler(async (req, res) => {
     topCountries,
   };
 
-  cacheService.set(cacheKey, payload);
+  await cacheService.set(cacheKey, payload);
 
   res.json({
     success: true,

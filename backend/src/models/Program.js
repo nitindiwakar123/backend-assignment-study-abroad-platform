@@ -71,5 +71,7 @@ programSchema.index({
   field: 1,
   tuitionFeeUsd: 1,
 });
+programSchema.index({ country: 1, degreeLevel: 1, tuitionFeeUsd: 1 });
+programSchema.index({ intakes: 1, scholarshipAvailable: 1 });
 
 module.exports = mongoose.model("Program", programSchema);

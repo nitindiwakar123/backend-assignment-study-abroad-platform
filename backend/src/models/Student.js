@@ -54,7 +54,7 @@ studentSchema.pre("save", async function hashPassword(next) {
     return next();
   }
 
-  this.password = await bcrypt.hash(this.password, 10);
+  this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
