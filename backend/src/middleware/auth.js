@@ -15,7 +15,7 @@ const requireAuth = asyncHandler(async (req, res, next) => {
   const token = authorizationHeader.replace("Bearer ", "").trim();
 
   try {
-    const decoded = jwt.verify(token, env.jwtSecret);
+    const decoded = jwt.verify(token, env.jwtSecret, { issuer: "waygood-api", audience: "waygood-client" });
     const student = await Student.findById(decoded.sub).select("-password");
 
     if (!student) {
@@ -25,6 +25,7 @@ const requireAuth = asyncHandler(async (req, res, next) => {
     req.user = student;
     next();
   } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(401, "Invalid or expired token.");
   }
 });
